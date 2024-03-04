@@ -1,0 +1,585 @@
+library(shiny)
+library(shinydashboard)
+library (leaflet)
+library(htmlwidgets)
+library("mapview")
+library("xml2")
+library("rgdal")
+library ("sf")
+require("sp")
+library(DT)
+library(RColorBrewer)
+library(scales)
+library(lattice)
+library(dplyr)
+library(dygraphs)
+library(xts)
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+library (reactable)
+library(knitr)
+library(tinytex)
+library(datasets)
+library(rmarkdown)
+library(shinyjs)
+require(rpart) #arboles
+require(rpart.plot)#gr?ficos ?rboles
+require(randomForest)#radom forests y bagging
+require(adabag)#boosting
+require(naniar) 
+require(visdat)
+require(simputation)
+library(plyr) 
+library(janitor)
+library(randomForest)
+library(ggplot2)
+library(rpart)
+library(rpart.plot)
+library("ROCR")
+library("pROC")
+library("caret")
+library(magrittr)
+require(naniar) 
+require(visdat)
+require(simputation)
+library(dplyr, exclude = c("filter", "lag"))
+library(plyr) 
+library(janitor)
+library(DMwR)
+library("caret")
+library("xts")
+library("stats")
+require(ncdf4)
+require(raster)
+library(forcats)
+
+
+
+setwd("C:/Users/Victoria/Documents/COLIFORMES FECALES/TESIS/APLICACIONES/Prueba_3")
+
+#mymap <- read_html(x= "C:/Users/Victoria/Documents/COLIFORMES FECALES/TESIS/APLICACIONES/Prueba_3/lf3.html")
+
+##seteo que puedan subir archivos mayores a 5 mb
+
+options(shiny.maxRequestSize = 20 * 1024^2)
+
+
+#subo los dos archivos que necesito
+
+
+map2 <- readOGR("data2/Areasplayas_4/Areasplayas_4.shp")
+map2
+
+#me parece que tengo un problema con el formato de las coordenadas
+
+map3 <- spTransform(map2,
+                    CRS("+proj=longlat +datum=WGS84 +no_defs"))
+
+class(map3)
+names(map3)
+map3
+
+
+
+ui <- dashboardPage(skin = "red",
+                    dashboardHeader(title = "Intendencia de Montevideo", titleWidth = 300
+                    ),
+                    dashboardSidebar(
+                      sidebarMenu(
+                        menuItem("Bienvenida", tabName = "Inicio", icon = icon("power-off")),
+                        menuItem("Instrucciones de uso", tabName = "Help", icon = icon("readme")),
+                        menuItem("Mapa datos históricos", tabName = "Mapa", icon = icon("map-marker")),
+                        menuItem("Mapa con predicciones", icon = icon("map-marker"),
+                                 menuItem("Predicciones del modelo", tabName = "Valid", icon = icon("laptop-code"),
+                                          menuSubItem("Visualización en Mapa",
+                                                      tabName = "Mapa_predicciones"),
+                                          menuSubItem("Informe predictivo semanal",
+                                                      tabName = "Informe")
+                                 )
+                        ) 
+                      )
+                    ),
+                    
+                    dashboardBody(
+                      withMathJax(),
+                      
+                      tabItems(
+                        
+                        tabItem(tabName = "Inicio",
+                                
+                                fluidRow(
+                                  tags$iframe(src = './Bienvenida_colis_3.html', # put myMarkdown.html to /www
+                                              width = '100%', height = '800px', 
+                                              frameborder = 0, scrolling = 'auto')
+                                )
+                                
+                        ),  
+                        
+                        tabItem(tabName = "Help",
+                                fluidRow(
+                                  tags$iframe(src = './Protocolo_colis_3.html', # put myMarkdown.html to /www
+                                              width = '100%', height = '800px', 
+                                              frameborder = 0, scrolling = 'auto') 
+                                ) #cierra fluid row
+                        ),#cierra tab name
+                        
+                        
+                        tabItem(tabName = "Mapa",
+                                
+                                sidebarLayout( 
+                                  sidebarPanel(
+                                    fileInput(
+                                      inputId = "filedata",
+                                      label = "Sube los datos.Archivo. csv ",
+                                      accept = c(".csv")
+                                    ),
+                                    
+                                    selectInput(
+                                      inputId = "variableselected",
+                                      label = "Selecciona la variable a observar",
+                                      choices = c("sal", "turb", "temp", "cf")
+                                    ),
+                                    dateInput(
+                                      inputId = "fechaselected2",
+                                      label = "Select fecha",
+                                      min = "2009-11-15",
+                                      max = "2020-06-01",
+                                      value= "2020-06-01",
+                                      format = "yyyy-mm-dd"
+                                    ),
+                                    
+                                    dateRangeInput(
+                                      inputId = "fechaselected",
+                                      label = "Selecciona el rango de fechas",
+                                      format = "yyyy-mm-dd",
+                                      start = "2009-11-15",
+                                      end = "2020-06-01",
+                                      min = "2009-11-15",
+                                      max = "2020-06-01",
+                                      startview = "month"
+                                    ),
+                                    
+                                    p("Hecho con", a("Shiny",
+                                                     href = "http://shiny.rstudio.com"
+                                    ), "."),
+                                    img(
+                                      src = "MEDIA.JPG",
+                                      width = "200px", height = "100px"
+                                    )
+                                  ), #cierra el sidebarpanel
+                                  mainPanel(
+                                    leafletOutput(outputId = "map"),
+                                    dygraphOutput(outputId = "timetrend"),
+                                    DTOutput(outputId = "table"),
+                                    reactableOutput("table2")
+                                  )
+                                ) #cierra el sliderlyout
+                                
+                        ), #cierra este tabitem
+                        
+                        
+                        # Modelo ----------------------------------------------------------------
+                        tabItem(tabName = "Mapa_predicciones",
+                                sidebarLayout( 
+                                  sidebarPanel(
+                                    
+                                    #  fileInput(
+                                    #   inputId = "filedata XX",
+                                    #  label = "Sube los datos.Archivo. csv XX",
+                                    # accept = c(".csv")
+                                    #),
+                                    
+                                    #selectInput(
+                                    # inputId = "variableselected_pred",
+                                    #  label = "Selecciona la variable a predecir",
+                                    # choices = c("CF_Prediccion")
+                                    #),
+                                    dateInput(
+                                      inputId = "fechaselected_pred",
+                                      label = "Selecciona la fecha de predicción",
+                                      min = "2020-01-03",
+                                      max = "2023-03-30",
+                                      value="2022-02-23",
+                                      format = "yyyy-mm-dd"
+                                    ),
+                                    #selectInput(
+                                    # inputId = "fechaselected_pred",
+                                    # label = "Selecciona la fecha",
+                                    #choices = 2023
+                                    #),
+                                    
+                                    
+                                    #dateRangeInput(
+                                    #inputId = "fechaselected",
+                                    #label = "Selecciona el rango de fechas",
+                                    #format = "yyyy-mm-dd",
+                                    #start = "2019-01-01",
+                                    #end = "2019-03-01",
+                                    #min = "2009-11-15",
+                                    #max = "2019-03-01",
+                                    #startview = "month"
+                                    #),
+                                    
+                                    
+                                    p("", 
+                                      img(
+                                        src = "Codigos_de_playas.PNG",
+                                        width = "280px", height = "500px")),
+                                    
+                                    p("Hecho con", a("Shiny",
+                                                     href = "http://shiny.rstudio.com"
+                                    ), "."),
+                                    img(
+                                      src = "MEDIA.JPG",
+                                      width = "200px", height = "100px"
+                                    )
+                                  ), #cierra el sidebarpanel
+                                  mainPanel(h3("Mapa con predicciones:"),
+                                            h4("Arriba- Predicción de categoría: Excede, No Excede"), 
+                                            h4("Abajo- Probabilidad de excedencia de umbral de 2000 UFC/100ml"),
+                                            leafletOutput(outputId = "map2"),
+                                            leafletOutput(outputId = "map4"),
+                                            reactableOutput("table4")
+                                            
+                                  ) #cierra el mainpanel
+                                ) #cierra el sliderlyout 
+                                
+                        ), #cierra el este tabitem
+                        
+                        tabItem(tabName = "Informe",
+                            
+                                
+                                ##OPCION 4
+                                sidebarLayout(
+                                  sidebarPanel(
+                                    selectInput('dir_selector',
+                                                label = 'Directorio seleccionado',
+                                                choices = list.files(getwd())),
+                                    verbatimTextOutput('selected_dir'),
+                                    uiOutput('file_selector'),
+                                    
+                                    
+                                  ),
+                                  mainPanel(
+                                    htmlOutput("frame")
+                                  )
+                                ) #cierra el fluidROW
+                                
+                                
+                                
+                                
+                        )#cierra este tab item
+                        
+                        
+                        
+                      ) #cierra el tab itemssss mas grande
+                      
+                    ) #cierra dashboarbody
+)#cierra dashboardpage
+
+
+
+server <- function(input, output, session) {
+  
+  #subo los csv files  PARA EL MAPA CON DATOS HISTÓRICOS-----
+  
+  data2 <- reactive({read.csv(input$filedata$datapath)})
+  
+  #data2<- reactive({
+  #req(input$filedata)
+  #read.csv(input$filedata$datapath) 
+  
+  #})
+  
+  #data2 <- read.csv("data2/Data_historica_ 2020_06_lun_22_11_06_2.csv",sep=";", dec=".", head = TRUE)  
+  data3 <- data2[c(20,1,9)]
+  data3$fecha <- ymd(data3$fecha)
+  class(data3$fecha)
+  str(data3$fecha)
+  
+  
+  # PESTAÑA DE MAPA CON DATOS HISTORICOS 
+  
+  
+  output$table2 <- renderReactable({
+    data2 <- data2()
+    reactable(data2[,c(1,21,5,6,7,9)], 
+              columns = list(
+                fecha=colDef(name = "Fecha", sticky = "left"),
+                playa_nom= colDef(name = "Playa", sticky = "left"),
+                sal= colDef(name = "Salinidad"),
+                turb= colDef(name = "Turbidez"),
+                temp= colDef(name = "Temperatura del agua (°C)"),
+                cf= colDef(name = "Coliformes")
+              ),
+              defaultSorted = list(fecha = "desc"),
+              filterable = TRUE,
+              resizable = TRUE, wrap = FALSE, bordered = TRUE)
+    
+  })
+  
+  observeEvent(input$fechaselected, {
+    # Select rows
+    updateReactable("table2", selected = c(1,2,4))
+  })
+  
+  
+  #la grafica----
+  
+  output$timetrend <- renderDygraph({
+    data2 <- data2()
+    
+    dataxts <- NULL
+    
+    Playas <- unique(data2$playa_nom)
+    
+    for (l in 1:length(Playas)) {
+      dataplayas <- data2[data2$playa_nom == Playas [l], ]
+      
+      dd <- xts(
+        dataplayas[, input$variableselected],
+        as.Date(paste0(dataplayas$fecha))
+      )
+      dataxts <- cbind(dataxts, dd)
+    }
+    colnames(dataxts) <- Playas
+    
+    dygraph(dataxts,  main = "Ventana temporal seleccionada") %>%
+      #ylab = input$variableselected) %>%
+      dyAxis("y", label = input$variableselected) %>%
+      dyOptions(includeZero = TRUE, axisLineWidth = 1.5)%>%
+      dyRangeSelector(dateWindow = input$fechaselected) %>%
+      dyRangeSelector(height = 20, strokeColor = "")  %>%
+      dyHighlight(highlightSeriesBackgroundAlpha = 0.2) -> d1
+    d1$x$css <- "
+.dygraph-legend > span {display:none;}
+.dygraph-legend > span.highlight { display: inline; }
+"
+    d1
+  })
+  
+  #el mapa-------
+  
+  output$map <- renderLeaflet({
+    
+    # Add data to map
+    data3 <- data3()
+    
+    # CHANGE 1980 by input$yearselected
+    datafiltered <- data3[which(data3$fecha == input$fechaselected2), ]
+    orderplayas <- match(map3@data$NOM_PLAYAS, datafiltered$playa_cod)
+    map3@data <- datafiltered[orderplayas, ]
+    
+    # Create variableplot
+    # ADD this to create variableplot
+    #map3$variableplot <- as.numeric(
+    # map3@data[, input$variableselected])
+    
+    
+    # Create leaflet
+    # CHANGE map$cases by map$variableplot
+    pal <- colorBin("YlOrRd", domain = map3$cf, bins = 7)
+    
+    # CHANGE map$cases by map$variableplot
+    labels <- sprintf("%s: %g", map3$playa_cod, map3$cf) %>%
+      lapply(htmltools::HTML)
+    
+    # CHANGE cases by variableplot
+    l <- leaflet(map3) %>%
+      addTiles() %>%
+      addPolygons(
+        fillColor = ~ pal(cf),
+        color = "white",
+        dashArray = "3",
+        fillOpacity = 10,
+        label = labels
+      ) %>%
+      
+      # CHANGE cases by variableplot
+      leaflet::addLegend(
+        pal = pal, values = ~cf,
+        opacity = 1, title = NULL
+      )
+  })
+  
+  
+  # PESTAÑA DEL MAPA CON PREDICCIONES, tengo que poner las probabilidades en un .dataframe ordenado xa cada playa y ´plotearlo en el mapa
+  
+  ##MAPA para clasificación con clases  y el mapa para clasificación con probabilidades
+  
+  output$map2 <- renderLeaflet({
+    
+    #MODELO DE CLASIFICACIÓN CON CLASES      
+    model_class<- readRDS("data2/RF_Modelo2G_cutoff.rda")   
+    model_class   
+    
+    data4 <- read.csv("data2/Data_test_model_class.csv")
+    fecha=ymd(data4$fecha)
+    
+    
+    ### le saco fecha a la data test
+    data4=data4[,-c(1,18)]
+    sapply(data4, class)
+    data4 %<>% mutate_at(c("cf"), as.numeric)
+    data4 %<>% mutate_at(c("wind_speed_km_h_mz"), as.numeric)
+    data4 %<>% mutate_at(c("playa_cod"),factor)
+    data4 %<>% mutate_at(c("playa_nom"),factor)
+    data4 %<>% mutate_at(c("cf2cat"),factor)
+    
+    #hago un predict con el modelo guardado
+    PREDICCION_CLASS_1=predict(model_class,data4, type="class")
+    PREDICCION_CLASS_1
+    
+    ## Vuelvo a machiar la fechas con el data4
+    data4=cbind(data4,fecha)
+    PREDICCIONES_CLASIFICACIÓN_1 <- data.frame(Fecha=data4$fecha, Playas = data4$playa_cod, CF_clase = PREDICCION_CLASS_1)
+    PREDICCIONES_CLASIFICACIÓN_1$Fecha <- ymd(PREDICCIONES_CLASIFICACIÓN_1$Fecha)
+    sapply(PREDICCIONES_CLASIFICACIÓN_1, class)
+    #PREDICCIONES_CLASIFICACIÓN_1 %<>% mutate_at(c("CF_clase"), as.numeric)
+    levels(PREDICCIONES_CLASIFICACIÓN_1$CF_clase)[levels(PREDICCIONES_CLASIFICACIÓN_1$CF_clase)=="1"] <- "EXCEDE"
+    levels(PREDICCIONES_CLASIFICACIÓN_1$CF_clase)[levels(PREDICCIONES_CLASIFICACIÓN_1$CF_clase)=="2"] <- "no EXCEDE"
+    
+    
+    ## le agrego un factor a Playas para que coincida con los levels del mapa
+    levels(PREDICCIONES_CLASIFICACIÓN_1$Playas) <- c(levels(PREDICCIONES_CLASIFICACIÓN_1$Playas), 'POCB')
+    PREDICCIONES_CLASIFICACIÓN_1$Playas<-factor(PREDICCIONES_CLASIFICACIÓN_1$Playas, levels = c('BR','BUC','CAR','H','ING','LC','MAL','MIR','MTA','PA','PB','PE','PN','POC','POCB','PPB','PY','RAM','SC','VDE','Z'))
+    names(PREDICCIONES_CLASIFICACIÓN_1)
+    summary(PREDICCIONES_CLASIFICACIÓN_1$Playas)
+    levels(PREDICCIONES_CLASIFICACIÓN_1$Playas)
+    
+    
+    # cambio el año por: input$yearselected
+    datafiltered <- PREDICCIONES_CLASIFICACIÓN_1[which(PREDICCIONES_CLASIFICACIÓN_1$Fecha==input$fechaselected_pred), ]
+    orderplayas <- match(map3@data$NOM_PLAYAS, datafiltered$Playas)
+    map3@data <- datafiltered[orderplayas, ]
+    
+    
+    #  Cambio map$cf por map$variableplot osea cualquier variable que selecciono
+    labels <- sprintf("%s: %g",  map3$Playas, map3$CF_clase) %>%
+      lapply(htmltools::HTML)
+    
+    factpal <- colorFactor(palette = c("red","green"), domain = map3$CF_clase)
+    
+    # Cambio cf por variableplot
+    l <- leaflet(map3) %>%
+      addTiles() %>%
+      addPolygons(
+        fillColor = ~factpal(CF_clase),
+        color = "white",
+        dashArray = "3",
+        fillOpacity = 10,
+        label = labels
+      ) %>%
+      
+      # Cambio cf por variableplot
+      leaflet::addLegend(
+        values = ~CF_clase,
+        colors = c("red","green"),
+        labels = c("EXCEDE","No EXCEDE"),
+        opacity = 1, title = "Clase predicha"
+      )
+  })
+  
+  #Ahora hago el mapa para clasificación 
+  
+  output$map4 <- renderLeaflet({      
+    
+    
+    #modelo de clasificación
+    model_class<- readRDS("data2/RF_Modelo2G_cutoff.rda")     
+    
+    #le cargo data para el test
+    data5 <- read.csv("data2/Data_test_model_class.csv")
+    names(data5)
+    fecha2=ymd(data5$fecha)
+    
+    ### le saco fecha a la data test
+    data5=data5[,-c(1,18)]
+    sapply(data5, class)
+    data5 %<>% mutate_at(c("cf"), as.numeric)
+    data5 %<>% mutate_at(c("wind_speed_km_h_mz"), as.numeric)
+    data5 %<>% mutate_at(c("playa_cod"),factor)
+    data5 %<>% mutate_at(c("playa_nom"),factor)
+    data5 %<>% mutate_at(c("cf2cat"),factor)
+    
+    #Predict para el modelo de clasificación 
+    PREDICCION_CLASS=predict(model_class,data5, type="prob")
+    PREDICCION_CLASS
+    #Genero un dataframe para ver las predicciones del de clasificación
+    ## Vuelvo a machiar la fechas con el data4
+    data5=cbind(data5,fecha2)
+    PREDICCIONES_CLASIFICACIÓN <- data.frame(Fecha=data5$fecha2, Playas = data5$playa_cod, CF_Probabilidad = PREDICCION_CLASS)
+    names(PREDICCIONES_CLASIFICACIÓN)[names(PREDICCIONES_CLASIFICACIÓN) == "CF_Probabilidad.2"] <- "no EXCEDE"
+    names(PREDICCIONES_CLASIFICACIÓN)[names(PREDICCIONES_CLASIFICACIÓN) == "CF_Probabilidad.1"] <- "EXCEDE"
+    PREDICCIONES_CLASIFICACIÓN$Fecha <- ymd(PREDICCIONES_CLASIFICACIÓN$Fecha)
+    
+    ## le agrego un factor a Playas para que coincida con los levels del mapa
+    levels(PREDICCIONES_CLASIFICACIÓN$Playas) <- c(levels(PREDICCIONES_CLASIFICACIÓN$Playas), 'POCB')
+    PREDICCIONES_CLASIFICACIÓN$Playas<-factor(PREDICCIONES_CLASIFICACIÓN$Playas, levels = c('BR','BUC','CAR','H','ING','LC','MAL','MIR','MTA','PA','PB','PE','PN','POC','POCB','PPB','PY','RAM','SC','VDE','Z'))
+    names(PREDICCIONES_CLASIFICACIÓN)
+    summary(PREDICCIONES_CLASIFICACIÓN$Playas)
+    levels(PREDICCIONES_CLASIFICACIÓN$Playas)
+    
+    
+    # le agrego data al mapa 
+    datafiltered <- PREDICCIONES_CLASIFICACIÓN[which(PREDICCIONES_CLASIFICACIÓN$Fecha==input$fechaselected_pred), ]
+    orderplayas <- match(map3@data$NOM_PLAYAS, datafiltered$Playas)
+    map3@data <- datafiltered[orderplayas, ]
+    
+    
+    # Cambio map$cf por map$variableplot osea cualquier variable que selecciono
+    risk.bins <-c(0,0.2,0.5, 0.7, 1.0)
+    pal <- colorBin("YlOrRd", domain = map3$EXCEDE, bins = risk.bins)
+    
+    #  Cambio map$cf por map$variableplot osea cualquier variable que selecciono
+    labels <- sprintf("%s: %g",  map3$Playas, map3$EXCEDE) %>%
+      lapply(htmltools::HTML)
+    
+    # Cambio cf por variableplot
+    l <- leaflet(map3) %>%
+      addTiles() %>%
+      addPolygons(
+        fillColor = ~ pal(EXCEDE),
+        color = "white",
+        dashArray = "3",
+        fillOpacity = 10,
+        label = labels
+      ) %>%
+      
+      # Cambio cf por variableplot
+      leaflet::addLegend(
+        values = ~EXCEDE,
+        colors = c("lightyellow","orange","red","darkred"),
+        labels = c("0-0.2","0.2-0.5","0.5-0.7","0.7-1"),
+        opacity = 1, 
+        title = "Probabilidad de exceso"
+      )
+  }) ##cierra el map4
+  
+  
+  # PESTAÑA DEL INFORME CON PREDICCIONES----------------------------------------   
+  
+  
+  # SELECCIONO EL DIRECTORIO 
+  output$selected_dir <- renderText(paste0('Directorio seleccionado: ', input$dir_selector))
+  
+  # SELECCIONO EL ARCHIVO DENTRO DEL DIRECTORIO
+  output$file_selector <- renderUI({
+    files <- list.files(paste0(getwd(), '/', input$dir_selector))
+    selectInput('file_selector',
+                label = 'Selecciona el archivo del informe',
+                choices = files)
+  })
+  
+  ##MUESTRO EL ARCHIVO SELECCIONADO 
+  output$frame <- renderUI({
+    tags$iframe(src= input$file_selector, width = '100%', height = '800px')
+  })
+  
+} ##cierra el server
+
+
+
+# Run the application 
+shinyApp(ui = ui, server = server)
